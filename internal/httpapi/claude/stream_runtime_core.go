@@ -18,6 +18,7 @@ type claudeStreamRuntime struct {
 	model     string
 	toolNames []string
 	messages  []any
+	toolsRaw  any
 
 	thinkingEnabled       bool
 	searchEnabled         bool
@@ -47,6 +48,7 @@ func newClaudeStreamRuntime(
 	searchEnabled bool,
 	stripReferenceMarkers bool,
 	toolNames []string,
+	toolsRaw any,
 ) *claudeStreamRuntime {
 	return &claudeStreamRuntime{
 		w:                     w,
@@ -59,6 +61,7 @@ func newClaudeStreamRuntime(
 		bufferToolContent:     len(toolNames) > 0,
 		stripReferenceMarkers: stripReferenceMarkers,
 		toolNames:             toolNames,
+		toolsRaw:              toolsRaw,
 		messageID:             fmt.Sprintf("msg_%d", time.Now().UnixNano()),
 		thinkingBlockIndex:    -1,
 		textBlockIndex:        -1,

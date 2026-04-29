@@ -205,14 +205,14 @@ async function handleVercelStream(req, res, rawBody, payload) {
       if (detected.length > 0 && !toolCallsDoneEmitted) {
         toolCallsEmitted = true;
         toolCallsDoneEmitted = true;
-        sendDeltaFrame({ tool_calls: formatOpenAIStreamToolCalls(detected, streamToolCallIDs) });
+        sendDeltaFrame({ tool_calls: formatOpenAIStreamToolCalls(detected, streamToolCallIDs, payload.tools) });
       } else if (toolSieveEnabled) {
         const tailEvents = flushToolSieve(toolSieveState, toolNames);
         for (const evt of tailEvents) {
           if (evt.type === 'tool_calls' && Array.isArray(evt.calls) && evt.calls.length > 0) {
             toolCallsEmitted = true;
             toolCallsDoneEmitted = true;
-            sendDeltaFrame({ tool_calls: formatOpenAIStreamToolCalls(evt.calls, streamToolCallIDs) });
+            sendDeltaFrame({ tool_calls: formatOpenAIStreamToolCalls(evt.calls, streamToolCallIDs, payload.tools) });
             resetStreamToolCallState(streamToolCallIDs, streamToolNames);
             continue;
           }
@@ -352,14 +352,14 @@ async function handleVercelStream(req, res, rawBody, payload) {
                       const formatted = formatIncrementalToolCallDeltas(filtered, streamToolCallIDs);
                       if (formatted.length > 0) {
                         toolCallsEmitted = true;
-                        sendDeltaFrame({ tool_calls: formatted });
+                      sendDeltaFrame({ tool_calls: formatted });
                       }
                       continue;
                     }
                     if (evt.type === 'tool_calls') {
                       toolCallsEmitted = true;
                       toolCallsDoneEmitted = true;
-                      sendDeltaFrame({ tool_calls: formatOpenAIStreamToolCalls(evt.calls, streamToolCallIDs) });
+                      sendDeltaFrame({ tool_calls: formatOpenAIStreamToolCalls(evt.calls, streamToolCallIDs, payload.tools) });
                       resetStreamToolCallState(streamToolCallIDs, streamToolNames);
                       continue;
                     }
@@ -513,6 +513,11 @@ function observeContinueState(state, chunk) {
   if (chunk.p === 'response/status') {
     setContinueStatus(state, asString(chunk.v));
   }
+  if (chunk.p === 'response') {
+    observeContinueBatchPatches(state, 'response', chunk.v);
+  } else {
+    observeContinueBatchPatches(state, '', chunk.v);
+  }
   const response = chunk.v && typeof chunk.v === 'object' ? chunk.v.response : null;
   if (response && typeof response === 'object') {
     const id = numberValue(response.message_id);
@@ -534,13 +539,43 @@ function observeContinueState(state, chunk) {
   }
 }
 
+function observeContinueBatchPatches(state, parentPath, raw) {
+  if (!state || !Array.isArray(raw)) {
+    return;
+  }
+  for (const patch of raw) {
+    if (!patch || typeof patch !== 'object') {
+      continue;
+    }
+    const path = asString(patch.p).trim();
+    if (!path) {
+      continue;
+    }
+    let fullPath = path;
+    const parent = asString(parentPath).trim().replace(/^\/+|\/+$/g, '');
+    if (parent && !path.includes('/')) {
+      fullPath = `${parent}/${path}`;
+    }
+    switch (fullPath.replace(/^\/+|\/+$/g, '')) {
+      case 'response/status':
+      case 'status':
+      case 'response/quasi_status':
+      case 'quasi_status':
+        setContinueStatus(state, asString(patch.v));
+        break;
+      default:
+        break;
+    }
+  }
+}
+
 function setContinueStatus(state, status) {
   const normalized = asString(status).trim();
   if (!normalized) {
     return;
   }
   state.lastStatus = normalized;
-  if (normalized.toUpperCase() === 'FINISHED') {
+  if (['FINISHED', 'CONTENT_FILTER'].includes(normalized.toUpperCase())) {
     state.finished = true;
   }
 }
@@ -549,7 +584,7 @@ function shouldAutoContinue(state) {
   if (!state || state.finished || !state.sessionID || state.responseMessageID <= 0) {
     return false;
   }
-  return ['WIP', 'INCOMPLETE', 'AUTO_CONTINUE'].includes(asString(state.lastStatus).trim().toUpperCase());
+  return ['INCOMPLETE', 'AUTO_CONTINUE'].includes(asString(state.lastStatus).trim().toUpperCase());
 }
 
 function numberValue(v) {

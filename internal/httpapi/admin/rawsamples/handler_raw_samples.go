@@ -15,6 +15,7 @@ import (
 	"ds2api/internal/devcapture"
 	adminshared "ds2api/internal/httpapi/admin/shared"
 	"ds2api/internal/rawsample"
+	"ds2api/internal/util"
 )
 
 type captureChain struct {
@@ -479,10 +480,13 @@ func previewCaptureChainResponse(chain captureChain) string {
 
 func previewText(text string, limit int) string {
 	text = strings.TrimSpace(text)
-	if limit <= 0 || len(text) <= limit {
+	if limit <= 0 {
 		return text
 	}
-	return text[:limit] + "..."
+	if truncated, ok := util.TruncateRunes(text, limit); ok {
+		return truncated + "..."
+	}
+	return text
 }
 
 func captureChainHasTruncatedResponse(chain captureChain) bool {

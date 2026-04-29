@@ -35,8 +35,9 @@ func main() {
 	}
 
 	srv := &http.Server{
-		Addr:    "0.0.0.0:" + port,
-		Handler: app.Router,
+		Addr:              "0.0.0.0:" + port,
+		Handler:           app.Router,
+		ReadHeaderTimeout: 5 * time.Second,
 	}
 	localURL := fmt.Sprintf("http://127.0.0.1:%s", port)
 	lanIP := detectLANIPv4()

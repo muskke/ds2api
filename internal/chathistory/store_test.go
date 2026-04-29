@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"unicode/utf8"
 )
 
 func blockDetailDir(t *testing.T, detailDir string) func() {
@@ -102,6 +103,17 @@ func TestStoreCreatesAndPersistsEntries(t *testing.T) {
 	}
 	if full.Content != "answer" {
 		t.Fatalf("expected detail content=answer, got %#v", full)
+	}
+}
+
+func TestBuildPreviewPreservesUTF8MB4Characters(t *testing.T) {
+	long := strings.Repeat("😀", defaultPreviewAt+1)
+	preview := buildPreview(Entry{Content: long})
+	if !utf8.ValidString(preview) {
+		t.Fatalf("expected valid utf-8 preview, got %q", preview)
+	}
+	if preview != strings.Repeat("😀", defaultPreviewAt)+"..." {
+		t.Fatalf("unexpected preview: %q", preview)
 	}
 }
 

@@ -254,8 +254,8 @@ func TestHandleResponsesStreamPromotesThinkingToolCallsOnFinalizeWithoutMidstrea
 	h.handleResponsesStream(rec, req, resp, "owner-a", "resp_test", "deepseek-v4-pro", "prompt", true, false, []string{"read_file"}, nil, promptcompat.DefaultToolChoicePolicy(), "")
 
 	body := rec.Body.String()
-	if !strings.Contains(body, "event: response.reasoning.delta") {
-		t.Fatalf("expected reasoning delta in stream body, got %s", body)
+	if strings.Contains(body, "event: response.reasoning.delta") {
+		t.Fatalf("did not expect leaked reasoning delta in stream body, got %s", body)
 	}
 	if !strings.Contains(body, "event: response.function_call_arguments.done") {
 		t.Fatalf("expected finalize fallback function call event, got %s", body)

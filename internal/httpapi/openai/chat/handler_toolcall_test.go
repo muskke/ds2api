@@ -291,19 +291,15 @@ func TestHandleStreamPromotesThinkingToolCallsOnFinalizeWithoutMidstreamIntercep
 	if !streamHasToolCallsDelta(frames) {
 		t.Fatalf("expected tool_calls delta from finalize fallback, body=%s", rec.Body.String())
 	}
-	reasoningSeen := false
 	for _, frame := range frames {
 		choices, _ := frame["choices"].([]any)
 		for _, item := range choices {
 			choice, _ := item.(map[string]any)
 			delta, _ := choice["delta"].(map[string]any)
 			if asString(delta["reasoning_content"]) != "" {
-				reasoningSeen = true
+				t.Fatalf("did not expect leaked reasoning_content markup, body=%s", rec.Body.String())
 			}
 		}
-	}
-	if !reasoningSeen {
-		t.Fatalf("expected reasoning_content to stream before finalize fallback, body=%s", rec.Body.String())
 	}
 	if streamFinishReason(frames) != "tool_calls" {
 		t.Fatalf("expected finish_reason=tool_calls, body=%s", rec.Body.String())

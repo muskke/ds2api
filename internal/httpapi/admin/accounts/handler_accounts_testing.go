@@ -107,6 +107,7 @@ func (h *Handler) testAccount(ctx context.Context, acc config.Account, model, me
 		"model":           model,
 		"session_count":   0,
 		"config_writable": !h.Store.IsEnvBacked(),
+		"config_warning":  "",
 	}
 	defer func() {
 		status := "failed"
@@ -121,8 +122,7 @@ func (h *Handler) testAccount(ctx context.Context, acc config.Account, model, me
 		return result
 	}
 	if err := h.Store.UpdateAccountToken(acc.Identifier(), token); err != nil {
-		result["message"] = "登录成功但写入运行时 token 失败: " + err.Error()
-		return result
+		result["config_warning"] = "登录成功，但 token 持久化失败（仅保存在内存，重启后会丢失）: " + err.Error()
 	}
 	authCtx := &authn.RequestAuth{UseConfigToken: false, DeepSeekToken: token, AccountID: identifier, Account: acc}
 	proxyCtx := authn.WithAuth(ctx, authCtx)
@@ -136,8 +136,7 @@ func (h *Handler) testAccount(ctx context.Context, acc config.Account, model, me
 		token = newToken
 		authCtx.DeepSeekToken = token
 		if err := h.Store.UpdateAccountToken(acc.Identifier(), token); err != nil {
-			result["message"] = "刷新 token 成功但写入运行时 token 失败: " + err.Error()
-			return result
+			result["config_warning"] = "刷新 token 成功，但 token 持久化失败（仅保存在内存，重启后会丢失）: " + err.Error()
 		}
 		sessionID, err = h.DS.CreateSession(proxyCtx, authCtx, 1)
 		if err != nil {
@@ -155,6 +154,9 @@ func (h *Handler) testAccount(ctx context.Context, acc config.Account, model, me
 	if strings.TrimSpace(message) == "" {
 		result["success"] = true
 		result["message"] = "Token 刷新成功（登录与会话创建成功）"
+		if warning, _ := result["config_warning"].(string); strings.TrimSpace(warning) != "" {
+			result["message"] = result["message"].(string) + "；" + warning
+		}
 		result["response_time"] = int(time.Since(start).Milliseconds())
 		return result
 	}

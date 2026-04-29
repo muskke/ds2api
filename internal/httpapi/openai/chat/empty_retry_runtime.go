@@ -16,6 +16,8 @@ import (
 )
 
 type chatNonStreamResult struct {
+	rawThinking           string
+	rawText               string
 	thinking              string
 	toolDetectionThinking string
 	text                  string
@@ -31,6 +33,7 @@ func (h *Handler) handleNonStreamWithRetry(w http.ResponseWriter, ctx context.Co
 	currentResp := resp
 	usagePrompt := finalPrompt
 	accumulatedThinking := ""
+	accumulatedRawThinking := ""
 	accumulatedToolDetectionThinking := ""
 	for {
 		result, ok := h.collectChatNonStreamAttempt(w, currentResp, completionID, model, usagePrompt, thinkingEnabled, searchEnabled, toolNames, toolsRaw)
@@ -38,10 +41,12 @@ func (h *Handler) handleNonStreamWithRetry(w http.ResponseWriter, ctx context.Co
 			return
 		}
 		accumulatedThinking += sse.TrimContinuationOverlap(accumulatedThinking, result.thinking)
+		accumulatedRawThinking += sse.TrimContinuationOverlap(accumulatedRawThinking, result.rawThinking)
 		accumulatedToolDetectionThinking += sse.TrimContinuationOverlap(accumulatedToolDetectionThinking, result.toolDetectionThinking)
 		result.thinking = accumulatedThinking
+		result.rawThinking = accumulatedRawThinking
 		result.toolDetectionThinking = accumulatedToolDetectionThinking
-		detected := detectAssistantToolCalls(result.text, result.thinking, result.toolDetectionThinking, toolNames)
+		detected := detectAssistantToolCalls(result.rawText, result.text, result.rawThinking, result.toolDetectionThinking, toolNames)
 		result.detectedCalls = len(detected.Calls)
 		result.body = openaifmt.BuildChatCompletionWithToolCalls(completionID, model, usagePrompt, result.thinking, result.text, detected.Calls, toolsRaw)
 		result.finishReason = chatFinishReason(result.body)
@@ -82,16 +87,17 @@ func (h *Handler) collectChatNonStreamAttempt(w http.ResponseWriter, resp *http.
 	result := sse.CollectStream(resp, thinkingEnabled, true)
 	stripReferenceMarkers := h.compatStripReferenceMarkers()
 	finalThinking := cleanVisibleOutput(result.Thinking, stripReferenceMarkers)
-	finalToolDetectionThinking := cleanVisibleOutput(result.ToolDetectionThinking, stripReferenceMarkers)
 	finalText := cleanVisibleOutput(result.Text, stripReferenceMarkers)
 	if searchEnabled {
 		finalText = replaceCitationMarkersWithLinks(finalText, result.CitationLinks)
 	}
-	detected := detectAssistantToolCalls(finalText, finalThinking, finalToolDetectionThinking, toolNames)
+	detected := detectAssistantToolCalls(result.Text, finalText, result.Thinking, result.ToolDetectionThinking, toolNames)
 	respBody := openaifmt.BuildChatCompletionWithToolCalls(completionID, model, usagePrompt, finalThinking, finalText, detected.Calls, toolsRaw)
 	return chatNonStreamResult{
+		rawThinking:           result.Thinking,
+		rawText:               result.Text,
 		thinking:              finalThinking,
-		toolDetectionThinking: finalToolDetectionThinking,
+		toolDetectionThinking: result.ToolDetectionThinking,
 		text:                  finalText,
 		contentFilter:         result.ContentFilter,
 		detectedCalls:         len(detected.Calls),

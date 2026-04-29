@@ -288,7 +288,7 @@ func TestProcessToolSieveNonToolXMLKeepsSuffixForToolParsing(t *testing.T) {
 	}
 }
 
-func TestProcessToolSievePassesThroughMalformedExecutableXMLBlock(t *testing.T) {
+func TestProcessToolSieveSuppressesMalformedExecutableXMLBlock(t *testing.T) {
 	var state State
 	chunk := `<tool_calls><invoke name="read_file"><param>{"path":"README.md"}</param></invoke></tool_calls>`
 	events := ProcessChunk(&state, chunk, []string{"read_file"})
@@ -302,10 +302,39 @@ func TestProcessToolSievePassesThroughMalformedExecutableXMLBlock(t *testing.T) 
 	}
 
 	if toolCalls != 0 {
-		t.Fatalf("expected malformed executable-looking XML to stay text, got %d events=%#v", toolCalls, events)
+		t.Fatalf("expected malformed executable-looking XML not to become a tool call, got %d events=%#v", toolCalls, events)
 	}
-	if textContent.String() != chunk {
-		t.Fatalf("expected malformed executable-looking XML to pass through unchanged, got %q", textContent.String())
+	if textContent.Len() != 0 {
+		t.Fatalf("expected malformed executable-looking XML to be suppressed, got %q", textContent.String())
+	}
+}
+
+func TestProcessToolSieveSuppressesAllEmptyDSMLToolBlock(t *testing.T) {
+	var state State
+	chunk := strings.Join([]string{
+		`<|DSML|tool_calls>`,
+		`<|DSML|invoke name="Bash">`,
+		`<|DSML|parameter name="command"></|DSML|parameter>`,
+		`<|DSML|parameter name="description">   </|DSML|parameter>`,
+		`<|DSML|parameter name="timeout"></|DSML|parameter>`,
+		`</|DSML|invoke>`,
+		`</|DSML|tool_calls>`,
+	}, "\n")
+	events := ProcessChunk(&state, chunk, []string{"Bash"})
+	events = append(events, Flush(&state, []string{"Bash"})...)
+
+	var textContent strings.Builder
+	toolCalls := 0
+	for _, evt := range events {
+		textContent.WriteString(evt.Content)
+		toolCalls += len(evt.ToolCalls)
+	}
+
+	if toolCalls != 0 {
+		t.Fatalf("expected all-empty DSML block not to produce tool calls, got %d events=%#v", toolCalls, events)
+	}
+	if textContent.Len() != 0 {
+		t.Fatalf("expected all-empty DSML block not to leak as text, got %q", textContent.String())
 	}
 }
 

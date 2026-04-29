@@ -48,7 +48,7 @@ func buildToolSchemaIndex(toolsRaw any) map[string]any {
 		if !ok {
 			continue
 		}
-		name, schema := extractToolNameAndSchema(tool)
+		name, _, schema := ExtractToolMeta(tool)
 		if name == "" || schema == nil {
 			continue
 		}
@@ -60,24 +60,31 @@ func buildToolSchemaIndex(toolsRaw any) map[string]any {
 	return out
 }
 
-func extractToolNameAndSchema(tool map[string]any) (string, any) {
+func ExtractToolMeta(tool map[string]any) (string, string, any) {
 	name := strings.TrimSpace(asStringValue(tool["name"]))
-	schema := tool["parameters"]
-	if schema == nil {
-		schema = tool["input_schema"]
-	}
+	desc := strings.TrimSpace(asStringValue(tool["description"]))
+	schema := firstNonNil(
+		tool["parameters"],
+		tool["input_schema"],
+		tool["inputSchema"],
+		tool["schema"],
+	)
 	if fn, ok := tool["function"].(map[string]any); ok {
 		if name == "" {
 			name = strings.TrimSpace(asStringValue(fn["name"]))
 		}
-		if schema == nil {
-			schema = fn["parameters"]
+		if desc == "" {
+			desc = strings.TrimSpace(asStringValue(fn["description"]))
 		}
-		if schema == nil {
-			schema = fn["input_schema"]
-		}
+		schema = firstNonNil(
+			schema,
+			fn["parameters"],
+			fn["input_schema"],
+			fn["inputSchema"],
+			fn["schema"],
+		)
 	}
-	return name, schema
+	return name, desc, schema
 }
 
 func normalizeToolValueWithSchema(value any, schema any) (any, bool) {
@@ -263,4 +270,13 @@ func asStringValue(v any) string {
 		return s
 	}
 	return ""
+}
+
+func firstNonNil(values ...any) any {
+	for _, value := range values {
+		if value != nil {
+			return value
+		}
+	}
+	return nil
 }

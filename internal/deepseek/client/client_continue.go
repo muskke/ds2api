@@ -7,6 +7,7 @@ import (
 	dsprotocol "ds2api/internal/deepseek/protocol"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -27,7 +28,7 @@ type continueState struct {
 }
 
 // wrapCompletionWithAutoContinue wraps the completion response body so that
-// if the upstream indicates the response is incomplete (WIP / INCOMPLETE /
+// if the upstream indicates the response is incomplete (INCOMPLETE /
 // AUTO_CONTINUE), ds2api will automatically call the DeepSeek continue
 // endpoint and splice the continuation SSE stream onto the original.
 // The caller sees a single, seamless SSE stream.
@@ -176,12 +177,12 @@ func (s *continueState) observe(data string) {
 	}
 	// Path-based status: {"p": "response/status", "v": "FINISHED"}
 	if p, _ := chunk["p"].(string); p == "response/status" {
-		if status, _ := chunk["v"].(string); status != "" {
-			s.lastStatus = strings.TrimSpace(status)
-			if strings.EqualFold(s.lastStatus, "FINISHED") {
-				s.finished = true
-			}
-		}
+		s.setStatus(asString(chunk["v"]))
+	}
+	if p, _ := chunk["p"].(string); p == "response" {
+		s.observeBatchPatches("response", chunk["v"])
+	} else {
+		s.observeBatchPatches("", chunk["v"])
 	}
 	// Nested v.response
 	v, _ := chunk["v"].(map[string]any)
@@ -189,12 +190,7 @@ func (s *continueState) observe(data string) {
 		if id := intFrom(response["message_id"]); id > 0 {
 			s.responseMessageID = id
 		}
-		if status, _ := response["status"].(string); status != "" {
-			s.lastStatus = strings.TrimSpace(status)
-			if strings.EqualFold(s.lastStatus, "FINISHED") {
-				s.finished = true
-			}
-		}
+		s.setStatus(asString(response["status"]))
 		if autoContinue, ok := response["auto_continue"].(bool); ok && autoContinue {
 			s.lastStatus = "AUTO_CONTINUE"
 		}
@@ -205,18 +201,56 @@ func (s *continueState) observe(data string) {
 			if id := intFrom(response["message_id"]); id > 0 {
 				s.responseMessageID = id
 			}
-			if status, _ := response["status"].(string); status != "" {
-				s.lastStatus = strings.TrimSpace(status)
-				if strings.EqualFold(s.lastStatus, "FINISHED") {
-					s.finished = true
-				}
-			}
+			s.setStatus(asString(response["status"]))
 		}
 	}
 }
 
-// shouldContinue returns true when the upstream indicates the response is
-// not yet finished and we have enough information to issue a continue request.
+func (s *continueState) observeBatchPatches(parentPath string, raw any) {
+	if s == nil {
+		return
+	}
+	patches, ok := raw.([]any)
+	if !ok {
+		return
+	}
+	for _, patch := range patches {
+		m, ok := patch.(map[string]any)
+		if !ok {
+			continue
+		}
+		path := strings.TrimSpace(asString(m["p"]))
+		if path == "" {
+			continue
+		}
+		fullPath := path
+		if parent := strings.Trim(strings.TrimSpace(parentPath), "/"); parent != "" && !strings.Contains(path, "/") {
+			fullPath = parent + "/" + path
+		}
+		switch strings.Trim(strings.TrimSpace(fullPath), "/") {
+		case "response/status", "status", "response/quasi_status", "quasi_status":
+			s.setStatus(asString(m["v"]))
+		}
+	}
+}
+
+func (s *continueState) setStatus(status string) {
+	if s == nil {
+		return
+	}
+	normalized := strings.TrimSpace(status)
+	if normalized == "" {
+		return
+	}
+	s.lastStatus = normalized
+	if strings.EqualFold(normalized, "FINISHED") || strings.EqualFold(normalized, "CONTENT_FILTER") {
+		s.finished = true
+	}
+}
+
+// shouldContinue returns true when the upstream explicitly indicates the
+// response is incomplete and we have enough information to issue a continue
+// request. Plain WIP is not sufficient because normal streams begin in WIP.
 func (s *continueState) shouldContinue() bool {
 	if s == nil {
 		return false
@@ -225,7 +259,7 @@ func (s *continueState) shouldContinue() bool {
 		return false
 	}
 	switch strings.ToUpper(strings.TrimSpace(s.lastStatus)) {
-	case "WIP", "INCOMPLETE", "AUTO_CONTINUE":
+	case "INCOMPLETE", "AUTO_CONTINUE":
 		return true
 	default:
 		return false
@@ -240,4 +274,20 @@ func (s *continueState) prepareForNextRound() {
 	}
 	s.finished = false
 	s.lastStatus = ""
+}
+
+func asString(v any) string {
+	if v == nil {
+		return ""
+	}
+	switch x := v.(type) {
+	case string:
+		return x
+	default:
+		s := strings.TrimSpace(strings.ReplaceAll(strings.TrimSpace(fmt.Sprint(v)), "\u0000", ""))
+		if s == "<nil>" {
+			return ""
+		}
+		return s
+	}
 }

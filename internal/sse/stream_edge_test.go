@@ -38,8 +38,8 @@ func TestStartParsedLinePumpMultipleLines(t *testing.T) {
 	if err := <-done; err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(collected) < 3 {
-		t.Fatalf("expected at least 3 results, got %d", len(collected))
+	if len(collected) < 2 {
+		t.Fatalf("expected at least 2 results, got %d", len(collected))
 	}
 	// First should be thinking
 	if collected[0].Parts[0].Type != "thinking" {
@@ -173,5 +173,33 @@ func TestStartParsedLinePumpThinkingDisabled(t *testing.T) {
 
 	if len(parts) < 1 {
 		t.Fatalf("expected at least 1 part, got %d", len(parts))
+	}
+}
+
+func TestStartParsedLinePumpAccumulatesSmallChunks(t *testing.T) {
+	body := strings.NewReader(
+		"data: {\"p\":\"response/content\",\"v\":\"h\"}\n" +
+			"data: {\"p\":\"response/content\",\"v\":\"i\"}\n" +
+			"data: [DONE]\n",
+	)
+
+	results, done := StartParsedLinePump(context.Background(), body, false, "text")
+
+	collected := make([]LineResult, 0)
+	for r := range results {
+		collected = append(collected, r)
+	}
+	if err := <-done; err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(collected) != 2 {
+		t.Fatalf("expected 2 results (accumulated content + done), got %d", len(collected))
+	}
+	if len(collected[0].Parts) != 2 {
+		t.Fatalf("expected 2 accumulated parts, got %d", len(collected[0].Parts))
+	}
+	if !collected[1].Stop {
+		t.Fatal("expected second result to stop")
 	}
 }

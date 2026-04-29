@@ -53,6 +53,7 @@ func normalizeClaudeRequest(store ConfigReader, req map[string]any) (claudeNorma
 			ResolvedModel:  dsModel,
 			ResponseModel:  strings.TrimSpace(model),
 			Messages:       payload["messages"].([]any),
+			ToolsRaw:       toolsRequested,
 			FinalPrompt:    finalPrompt,
 			ToolNames:      toolNames,
 			Stream:         util.ToBool(req["stream"]),

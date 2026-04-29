@@ -110,3 +110,52 @@ func TestNormalizeParsedToolCallsForSchemasLeavesAmbiguousUnionUnchanged(t *test
 		t.Fatalf("expected ambiguous union to stay unchanged, got %#v", got[0].Input["taskId"])
 	}
 }
+
+func TestNormalizeParsedToolCallsForSchemasSupportsCamelCaseInputSchema(t *testing.T) {
+	toolsRaw := []any{
+		map[string]any{
+			"name": "Write",
+			"inputSchema": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"content": map[string]any{"type": "string"},
+				},
+			},
+		},
+	}
+	calls := []ParsedToolCall{{Name: "Write", Input: map[string]any{"content": map[string]any{"message": "hi"}}}}
+	got := NormalizeParsedToolCallsForSchemas(calls, toolsRaw)
+	if got[0].Input["content"] != `{"message":"hi"}` {
+		t.Fatalf("expected camelCase inputSchema content coercion, got %#v", got[0].Input["content"])
+	}
+}
+
+func TestNormalizeParsedToolCallsForSchemasPreservesArrayWhenSchemaSaysArray(t *testing.T) {
+	toolsRaw := []any{
+		map[string]any{
+			"name": "todowrite",
+			"inputSchema": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"todos": map[string]any{
+						"type": "array",
+						"items": map[string]any{
+							"type": "object",
+							"properties": map[string]any{
+								"content":  map[string]any{"type": "string"},
+								"status":   map[string]any{"type": "string"},
+								"priority": map[string]any{"type": "string"},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	todos := []any{map[string]any{"content": "x", "status": "pending", "priority": "high"}}
+	calls := []ParsedToolCall{{Name: "todowrite", Input: map[string]any{"todos": todos}}}
+	got := NormalizeParsedToolCallsForSchemas(calls, toolsRaw)
+	if !reflect.DeepEqual(got[0].Input["todos"], todos) {
+		t.Fatalf("expected todos array preserved, got %#v want %#v", got[0].Input["todos"], todos)
+	}
+}

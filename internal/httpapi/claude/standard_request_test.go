@@ -32,8 +32,36 @@ func TestNormalizeClaudeRequest(t *testing.T) {
 	if len(norm.Standard.ToolNames) == 0 {
 		t.Fatalf("expected tool names")
 	}
+	if norm.Standard.ToolsRaw == nil {
+		t.Fatalf("expected ToolsRaw preserved for downstream normalization")
+	}
 	if norm.Standard.FinalPrompt == "" {
 		t.Fatalf("expected non-empty final prompt")
+	}
+}
+
+func TestNormalizeClaudeRequestSupportsCamelCaseInputSchemaPromptInjection(t *testing.T) {
+	t.Setenv("DS2API_CONFIG_JSON", `{}`)
+	store := config.LoadStore()
+	req := map[string]any{
+		"model": "claude-sonnet-4-5",
+		"messages": []any{
+			map[string]any{"role": "user", "content": "hello"},
+		},
+		"tools": []any{
+			map[string]any{
+				"name":        "todowrite",
+				"description": "Write todos",
+				"inputSchema": map[string]any{"type": "object", "properties": map[string]any{"todos": map[string]any{"type": "array"}}},
+			},
+		},
+	}
+	norm, err := normalizeClaudeRequest(store, req)
+	if err != nil {
+		t.Fatalf("normalize failed: %v", err)
+	}
+	if !containsStr(norm.Standard.FinalPrompt, `"type":"array"`) {
+		t.Fatalf("expected inputSchema to be injected into prompt, got=%q", norm.Standard.FinalPrompt)
 	}
 }
 

@@ -309,7 +309,7 @@ parse SSE block
 - 新模型可能增加新的 `p` 路径。
 - 新版本可能增加新的 fragment.type。
 - `CONTENT_FILTER` 的终态模板内容可能变化。
-- 自动续写相关状态（如 `INCOMPLETE` / `AUTO_CONTINUE`）当前主要来自实测与实现兼容逻辑，后续字段形态仍可能变化。
+- 自动续写相关状态（如 `INCOMPLETE` / `AUTO_CONTINUE`）当前主要来自实测与实现兼容逻辑，后续字段形态仍可能变化。当前实现不会仅因早期 `WIP` 状态就自动继续；只有显式 `INCOMPLETE` 或 `auto_continue` 信号才会触发 continue。
 - 解析器应当对未知字段、未知路径、未知事件保持容忍。
 
 如果你要把这份说明用于实际开发，建议同时保留原始流样本、回放脚本和回归测试，不要只依赖本文。

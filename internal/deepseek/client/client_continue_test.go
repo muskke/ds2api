@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"ds2api/internal/auth"
@@ -121,6 +122,90 @@ func TestCallCompletionAutoContinueThreadsPowHeader(t *testing.T) {
 	}
 	if !bytes.Contains(out, []byte(`data: [DONE]`)) {
 		t.Fatalf("expected final DONE sentinel in body, got=%s", string(out))
+	}
+}
+
+func TestAutoContinueDoesNotTriggerOnPlainWIPWithoutExplicitContinuationSignal(t *testing.T) {
+	initialBody := strings.Join([]string{
+		`data: {"response_message_id":321,"v":{"response":{"message_id":321,"status":"WIP","auto_continue":false}}}`,
+		`data: [DONE]`,
+	}, "\n") + "\n"
+
+	var continueCalls atomic.Int32
+	body := newAutoContinueBody(context.Background(), io.NopCloser(strings.NewReader(initialBody)), "session-123", 8, func(context.Context, string, int) (*http.Response, error) {
+		continueCalls.Add(1)
+		return nil, errors.New("continue should not have been called")
+	})
+	defer func() { _ = body.Close() }()
+
+	out, err := io.ReadAll(body)
+	if err != nil {
+		t.Fatalf("read body failed: %v", err)
+	}
+	if continueCalls.Load() != 0 {
+		t.Fatalf("expected no continue calls, got %d", continueCalls.Load())
+	}
+	if !bytes.Contains(out, []byte(`"status":"WIP"`)) || !bytes.Contains(out, []byte(`data: [DONE]`)) {
+		t.Fatalf("expected original body to pass through unchanged, got=%s", string(out))
+	}
+}
+
+func TestAutoContinueTriggersOnResponseBatchQuasiStatusIncomplete(t *testing.T) {
+	initialBody := strings.Join([]string{
+		`data: {"response_message_id":321,"v":{"response":{"message_id":321,"status":"WIP","auto_continue":false}}}`,
+		`data: {"p":"response","o":"BATCH","v":[{"p":"accumulated_token_usage","v":2413},{"p":"quasi_status","v":"INCOMPLETE"}]}`,
+		`data: [DONE]`,
+	}, "\n") + "\n"
+
+	var continueCalls atomic.Int32
+	body := newAutoContinueBody(context.Background(), io.NopCloser(strings.NewReader(initialBody)), "session-123", 8, func(context.Context, string, int) (*http.Response, error) {
+		continueCalls.Add(1)
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     make(http.Header),
+			Body: io.NopCloser(strings.NewReader(
+				`data: {"response_message_id":322,"p":"response/status","v":"FINISHED"}` + "\n" +
+					`data: [DONE]` + "\n",
+			)),
+		}, nil
+	})
+	defer func() { _ = body.Close() }()
+
+	out, err := io.ReadAll(body)
+	if err != nil {
+		t.Fatalf("read body failed: %v", err)
+	}
+	if continueCalls.Load() != 1 {
+		t.Fatalf("expected exactly one continue call, got %d", continueCalls.Load())
+	}
+	if !bytes.Contains(out, []byte(`"quasi_status","v":"INCOMPLETE"`)) || !bytes.Contains(out, []byte(`"v":"FINISHED"`)) {
+		t.Fatalf("expected continued output to include initial and final rounds, got=%s", string(out))
+	}
+}
+
+func TestAutoContinueDoesNotTriggerWhenResponseBatchQuasiStatusFinished(t *testing.T) {
+	initialBody := strings.Join([]string{
+		`data: {"response_message_id":321,"v":{"response":{"message_id":321,"status":"WIP","auto_continue":false}}}`,
+		`data: {"p":"response","o":"BATCH","v":[{"p":"accumulated_token_usage","v":2413},{"p":"quasi_status","v":"FINISHED"}]}`,
+		`data: [DONE]`,
+	}, "\n") + "\n"
+
+	var continueCalls atomic.Int32
+	body := newAutoContinueBody(context.Background(), io.NopCloser(strings.NewReader(initialBody)), "session-123", 8, func(context.Context, string, int) (*http.Response, error) {
+		continueCalls.Add(1)
+		return nil, errors.New("continue should not have been called")
+	})
+	defer func() { _ = body.Close() }()
+
+	out, err := io.ReadAll(body)
+	if err != nil {
+		t.Fatalf("read body failed: %v", err)
+	}
+	if continueCalls.Load() != 0 {
+		t.Fatalf("expected no continue calls, got %d", continueCalls.Load())
+	}
+	if !bytes.Contains(out, []byte(`"quasi_status","v":"FINISHED"`)) || !bytes.Contains(out, []byte(`data: [DONE]`)) {
+		t.Fatalf("expected original finished body to pass through unchanged, got=%s", string(out))
 	}
 }
 

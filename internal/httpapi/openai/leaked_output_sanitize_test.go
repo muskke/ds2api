@@ -42,6 +42,14 @@ func TestSanitizeLeakedOutputRemovesDanglingThinkBlock(t *testing.T) {
 	}
 }
 
+func TestSanitizeLeakedOutputRemovesCompleteDSMLToolCallWrapper(t *testing.T) {
+	raw := "前置文本\n<｜DSML｜tool_calls>\n<｜DSML｜invoke name=\"Bash\">\n<｜DSML｜parameter name=\"command\"></｜DSML｜parameter>\n</｜DSML｜invoke>\n</｜DSML｜tool_calls>\n后置文本"
+	got := sanitizeLeakedOutput(raw)
+	if got != "前置文本\n\n后置文本" {
+		t.Fatalf("unexpected sanitize result for leaked dsml wrapper: %q", got)
+	}
+}
+
 func TestSanitizeLeakedOutputRemovesAgentXMLLeaks(t *testing.T) {
 	raw := "Done.<attempt_completion><result>Some final answer</result></attempt_completion>"
 	got := sanitizeLeakedOutput(raw)

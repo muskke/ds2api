@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"ds2api/internal/devcapture"
 )
@@ -228,6 +229,16 @@ func TestCombineCaptureBodiesPreservesOrderAndSeparators(t *testing.T) {
 	got := combineCaptureBodies(entries)
 	if !bytes.Equal(got, []byte("first\nsecond")) {
 		t.Fatalf("unexpected combined body: %q", string(got))
+	}
+}
+
+func TestPreviewTextPreservesUTF8MB4Characters(t *testing.T) {
+	preview := previewText(strings.Repeat("😀", 281), 280)
+	if !utf8.ValidString(preview) {
+		t.Fatalf("expected valid utf-8 preview, got %q", preview)
+	}
+	if preview != strings.Repeat("😀", 280)+"..." {
+		t.Fatalf("unexpected preview: %q", preview)
 	}
 }
 

@@ -13,7 +13,7 @@ func ReplaceCitationMarkersWithLinks(text string, links map[int]string) string {
 	if strings.TrimSpace(text) == "" || len(links) == 0 {
 		return text
 	}
-	zeroBased := strings.Contains(strings.ToLower(text), "[reference:0]")
+	zeroBasedReference := hasZeroBasedReferenceMarker(text)
 	return citationMarkerPattern.ReplaceAllStringFunc(text, func(match string) string {
 		sub := citationMarkerPattern.FindStringSubmatch(match)
 		if len(sub) < 3 {
@@ -24,7 +24,7 @@ func ReplaceCitationMarkersWithLinks(text string, links map[int]string) string {
 			return match
 		}
 		lookupIdx := idx
-		if zeroBased {
+		if strings.EqualFold(sub[1], "reference") && zeroBasedReference {
 			lookupIdx = idx + 1
 		}
 		url := strings.TrimSpace(links[lookupIdx])
@@ -33,4 +33,17 @@ func ReplaceCitationMarkersWithLinks(text string, links map[int]string) string {
 		}
 		return fmt.Sprintf("[%d](%s)", idx, url)
 	})
+}
+
+func hasZeroBasedReferenceMarker(text string) bool {
+	for _, sub := range citationMarkerPattern.FindAllStringSubmatch(text, -1) {
+		if len(sub) < 3 || !strings.EqualFold(sub[1], "reference") {
+			continue
+		}
+		idx, err := strconv.Atoi(strings.TrimSpace(sub[2]))
+		if err == nil && idx == 0 {
+			return true
+		}
+	}
+	return false
 }

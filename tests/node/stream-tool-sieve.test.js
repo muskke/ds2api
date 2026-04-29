@@ -188,6 +188,30 @@ test('parseToolCalls treats single-item CDATA body as array', () => {
   assert.deepEqual(calls[0].input.todos, ['one']);
 });
 
+test('formatOpenAIStreamToolCalls normalizes camelCase inputSchema string fields', () => {
+  const formatted = formatOpenAIStreamToolCalls([
+    { name: 'Write', input: { content: { message: 'hi' }, taskId: 1 } },
+  ], new Map(), [
+    { name: 'Write', inputSchema: { type: 'object', properties: { content: { type: 'string' }, taskId: { type: 'string' } } } },
+  ]);
+  assert.equal(formatted.length, 1);
+  const args = JSON.parse(formatted[0].function.arguments);
+  assert.equal(args.content, '{"message":"hi"}');
+  assert.equal(args.taskId, '1');
+});
+
+test('formatOpenAIStreamToolCalls preserves arrays when schema says array', () => {
+  const todos = [{ content: 'x', status: 'pending', priority: 'high' }];
+  const formatted = formatOpenAIStreamToolCalls([
+    { name: 'todowrite', input: { todos } },
+  ], new Map(), [
+    { name: 'todowrite', inputSchema: { type: 'object', properties: { todos: { type: 'array', items: { type: 'object' } } } } },
+  ]);
+  assert.equal(formatted.length, 1);
+  const args = JSON.parse(formatted[0].function.arguments);
+  assert.deepEqual(args.todos, todos);
+});
+
 test('parseToolCalls treats CDATA object fragment as object', () => {
   const fragment = '<question><![CDATA[Pick one]]></question><options><item><label><![CDATA[A]]></label></item><item><label><![CDATA[B]]></label></item></options>';
   const payload = `<tool_calls><invoke name="AskUserQuestion"><parameter name="questions"><![CDATA[${fragment}]]></parameter></invoke></tool_calls>`;

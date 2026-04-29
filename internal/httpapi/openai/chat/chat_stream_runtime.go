@@ -36,8 +36,10 @@ type chatStreamRuntime struct {
 	toolSieve             toolstream.State
 	streamToolCallIDs     map[int]string
 	streamToolNames       map[int]string
+	rawThinking           strings.Builder
 	thinking              strings.Builder
 	toolDetectionThinking strings.Builder
+	rawText               strings.Builder
 	text                  strings.Builder
 	responseMessageID     int
 
@@ -141,7 +143,7 @@ func (s *chatStreamRuntime) finalize(finishReason string, deferEmptyOutput bool)
 	finalText := cleanVisibleOutput(s.text.String(), s.stripReferenceMarkers)
 	s.finalThinking = finalThinking
 	s.finalText = finalText
-	detected := detectAssistantToolCalls(finalText, finalThinking, finalToolDetectionThinking, s.toolNames)
+	detected := detectAssistantToolCalls(s.rawText.String(), finalText, s.rawThinking.String(), finalToolDetectionThinking, s.toolNames)
 	if len(detected.Calls) > 0 && !s.toolCallsDoneEmitted {
 		finishReason = "tool_calls"
 		delta := map[string]any{
@@ -186,7 +188,7 @@ func (s *chatStreamRuntime) finalize(finishReason string, deferEmptyOutput bool)
 				continue
 			}
 			cleaned := cleanVisibleOutput(evt.Content, s.stripReferenceMarkers)
-			if cleaned == "" {
+			if cleaned == "" || (s.searchEnabled && sse.IsCitation(cleaned)) {
 				continue
 			}
 			delta := map[string]any{
@@ -263,21 +265,22 @@ func (s *chatStreamRuntime) onParsed(parsed sse.LineResult) streamengine.ParsedD
 		}
 	}
 	for _, p := range parsed.Parts {
-		cleanedText := cleanVisibleOutput(p.Text, s.stripReferenceMarkers)
-		if s.searchEnabled && sse.IsCitation(cleanedText) {
-			continue
-		}
-		if cleanedText == "" {
-			continue
-		}
-		contentSeen = true
 		delta := map[string]any{}
 		if !s.firstChunkSent {
 			delta["role"] = "assistant"
 			s.firstChunkSent = true
 		}
 		if p.Type == "thinking" {
+			rawTrimmed := sse.TrimContinuationOverlap(s.rawThinking.String(), p.Text)
+			if rawTrimmed != "" {
+				s.rawThinking.WriteString(rawTrimmed)
+				contentSeen = true
+			}
 			if s.thinkingEnabled {
+				cleanedText := cleanVisibleOutput(rawTrimmed, s.stripReferenceMarkers)
+				if cleanedText == "" {
+					continue
+				}
 				trimmed := sse.TrimContinuationOverlap(s.thinking.String(), cleanedText)
 				if trimmed == "" {
 					continue
@@ -286,15 +289,27 @@ func (s *chatStreamRuntime) onParsed(parsed sse.LineResult) streamengine.ParsedD
 				delta["reasoning_content"] = trimmed
 			}
 		} else {
-			trimmed := sse.TrimContinuationOverlap(s.text.String(), cleanedText)
-			if trimmed == "" {
+			rawTrimmed := sse.TrimContinuationOverlap(s.rawText.String(), p.Text)
+			if rawTrimmed == "" {
 				continue
 			}
-			s.text.WriteString(trimmed)
+			s.rawText.WriteString(rawTrimmed)
+			contentSeen = true
+			cleanedText := cleanVisibleOutput(rawTrimmed, s.stripReferenceMarkers)
+			if s.searchEnabled && sse.IsCitation(cleanedText) {
+				continue
+			}
+			trimmed := sse.TrimContinuationOverlap(s.text.String(), cleanedText)
+			if trimmed != "" {
+				s.text.WriteString(trimmed)
+			}
 			if !s.bufferToolContent {
+				if trimmed == "" {
+					continue
+				}
 				delta["content"] = trimmed
 			} else {
-				events := toolstream.ProcessChunk(&s.toolSieve, trimmed, s.toolNames)
+				events := toolstream.ProcessChunk(&s.toolSieve, rawTrimmed, s.toolNames)
 				for _, evt := range events {
 					if len(evt.ToolCallDeltas) > 0 {
 						if !s.emitEarlyToolDeltas {
@@ -335,7 +350,7 @@ func (s *chatStreamRuntime) onParsed(parsed sse.LineResult) streamengine.ParsedD
 					}
 					if evt.Content != "" {
 						cleaned := cleanVisibleOutput(evt.Content, s.stripReferenceMarkers)
-						if cleaned == "" {
+						if cleaned == "" || (s.searchEnabled && sse.IsCitation(cleaned)) {
 							continue
 						}
 						contentDelta := map[string]any{

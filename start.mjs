@@ -126,9 +126,12 @@ function binaryExists() {
 
 // 查找占用端口的进程 PID
 function findPidByPort(port) {
+  const numericPort = parseInt(port, 10);
+  if (isNaN(numericPort)) return [];
+  
   try {
     if (isWindows) {
-      const output = execSync(`netstat -ano | findstr :${port} | findstr LISTENING`, {
+      const output = execSync(`netstat -ano | findstr :${numericPort} | findstr LISTENING`, {
         encoding: 'utf-8',
         shell: true,
         stdio: ['pipe', 'pipe', 'ignore'],
@@ -141,7 +144,7 @@ function findPidByPort(port) {
       }
       return [...pids];
     } else {
-      const output = execSync(`lsof -ti :${port}`, {
+      const output = execSync(`lsof -ti :${numericPort}`, {
         encoding: 'utf-8',
         stdio: ['pipe', 'pipe', 'ignore'],
       });
@@ -217,7 +220,7 @@ async function installFrontendDeps() {
     const proc = spawn('npm', ['ci', '--registry', MIRRORS.npm], {
       cwd: CONFIG.webuiDir,
       stdio: 'inherit',
-      shell: true,
+      shell: isWindows,
     });
     proc.on('close', code => code === 0 ? resolve() : reject(new Error('前端依赖安装失败')));
   });
@@ -239,7 +242,7 @@ async function buildBackend() {
     const proc = spawn('go', ['build', '-o', BINARY, './cmd/ds2api'], {
       cwd: __dirname,
       stdio: 'inherit',
-      shell: true,
+      shell: isWindows,
       env: { ...process.env, GOPROXY: MIRRORS.goproxy },
     });
     proc.on('close', code => code === 0 ? resolve() : reject(new Error('后端编译失败')));
@@ -257,7 +260,7 @@ async function buildWebui() {
   return new Promise((resolve, reject) => {
     const proc = spawn(
       'npm', ['run', 'build', '--', '--outDir', CONFIG.staticAdminDir, '--emptyOutDir'],
-      { cwd: CONFIG.webuiDir, stdio: 'inherit', shell: true }
+      { cwd: CONFIG.webuiDir, stdio: 'inherit', shell: isWindows }
     );
     proc.on('close', code => code === 0 ? resolve() : reject(new Error('前端构建失败')));
   });
@@ -270,9 +273,8 @@ async function startBackendDev() {
   const proc = spawn('go', ['run', './cmd/ds2api'], {
     cwd: __dirname,
     stdio: 'inherit',
-    shell: true,
-    env: {
-      ...process.env,
+    shell: isWindows,
+    env: { ...process.env,
       PORT: CONFIG.port,
       LOG_LEVEL: CONFIG.logLevel,
       DS2API_ADMIN_KEY: CONFIG.adminKey,

@@ -31,6 +31,30 @@
 >
 > 请勿将本项目用于违反服务条款、协议、法律法规或平台规则的场景。商业使用前请自行确认 `LICENSE`、相关协议以及你是否获得了作者的书面许可。
 
+## 目录
+
+- [架构概览（摘要）](#架构概览摘要)
+- [核心能力](#核心能力)
+- [平台兼容矩阵](#平台兼容矩阵)
+- [模型支持](#模型支持)
+  - [OpenAI 接口](#openai-接口get-v1models)
+  - [Claude 接口](#claude-接口get-anthropicv1models)
+  - [Gemini 接口](#gemini-接口)
+- [快速开始](#快速开始)
+  - [方式一：下载 Release 构建包](#方式一下载-release-构建包)
+  - [方式二：Docker 运行](#方式二docker-运行)
+  - [方式三：Vercel 部署](#方式三vercel-部署)
+  - [方式四：本地源码运行](#方式四本地源码运行)
+- [配置说明](#配置说明)
+- [鉴权模式](#鉴权模式)
+- [并发模型](#并发模型)
+- [Tool Call 适配](#tool-call-适配)
+- [本地开发抓包工具](#本地开发抓包工具)
+- [文档索引](#文档索引)
+- [测试](#测试)
+- [Release 自动构建（GitHub Actions）](#release-自动构建github-actions)
+- [免责声明](#免责声明)
+
 ## 架构概览（摘要）
 
 ```mermaid
@@ -134,10 +158,9 @@ flowchart LR
 | expert | `deepseek-v4-pro-search-nothinking` | 永久关闭，不受请求参数影响 | ✅ |
 | vision | `deepseek-v4-vision` | 默认开启，可由请求参数控制 | ❌ |
 | vision | `deepseek-v4-vision-nothinking` | 永久关闭，不受请求参数影响 | ❌ |
-| vision | `deepseek-v4-vision-search` | 默认开启，可由请求参数控制 | ✅ |
-| vision | `deepseek-v4-vision-search-nothinking` | 永久关闭，不受请求参数影响 | ✅ |
 
 除原生模型外，也支持常见 alias 输入（如 `gpt-4.1`、`gpt-5`、`gpt-5-codex`、`o3`、`claude-*`、`gemini-*` 等），但 `/v1/models` 返回的是规范化后的 DeepSeek 原生模型 ID。若 alias 名本身追加 `-nothinking` 后缀，也会映射到对应的强制关思考模型。完整 alias 行为以 [API.md](API.md#模型-alias-解析策略) 和 `config.example.json` 为准。
+当前上游视觉模型只暴露 `vision` 通道，不提供独立的联网搜索视觉变体。
 
 ### Claude 接口（`GET /anthropic/v1/models`）
 
@@ -221,6 +244,7 @@ docker-compose logs -f
 ```
 
 默认 `docker-compose.yml` 会把宿主机 `6011` 映射到容器内的 `5001`。如果你希望直接对外暴露 `5001`，请设置 `DS2API_HOST_PORT=5001`（或者手动调整 `ports` 配置）。
+同时默认把 `./config.json` 挂载到容器 `/data/config.json`，并设置 `DS2API_CONFIG_PATH=/data/config.json`，用于避免 `/app` 只读导致运行时 token 持久化失败。
 
 更新镜像：`docker-compose up -d --build`
 
@@ -291,7 +315,7 @@ go run ./cmd/ds2api
 - `runtime`：账号并发、队列与 token 刷新策略，可通过 Admin Settings 热更新。
 - `auto_delete.mode`：请求结束后的远端会话清理策略，支持 `none` / `single` / `all`。
 - `history_split`：旧轮次拆分字段，已废弃并忽略，仅保留兼容旧配置。
-- `current_input_file`：唯一生效的独立拆分策略；默认开启且阈值为 `0`，触发时将完整上下文合并上传为隐藏上下文文件。
+- `current_input_file`：唯一生效的独立拆分策略；默认开启且阈值为 `0`，触发时将完整上下文合并上传为 `history.txt` 上下文文件。
 - 如果关闭 `current_input_file`，请求会直接透传，不上传拆分上下文文件。
 - `thinking_injection`：默认开启；在最新 user 消息末尾追加思考增强提示词，提高高强度推理与工具调用前的思考稳定性；`prompt` 留空时使用内置默认提示词。
 

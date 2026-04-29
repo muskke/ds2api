@@ -144,10 +144,17 @@ func TestResolveModelCustomAliasToExpert(t *testing.T) {
 
 func TestResolveModelCustomAliasToVision(t *testing.T) {
 	got, ok := ResolveModel(mockModelAliasReader{
-		"my-vision-model": "deepseek-v4-vision-search",
+		"my-vision-model": "deepseek-v4-vision",
 	}, "my-vision-model")
-	if !ok || got != "deepseek-v4-vision-search" {
-		t.Fatalf("expected alias -> deepseek-v4-vision-search, got ok=%v model=%q", ok, got)
+	if !ok || got != "deepseek-v4-vision" {
+		t.Fatalf("expected alias -> deepseek-v4-vision, got ok=%v model=%q", ok, got)
+	}
+}
+
+func TestResolveModelHeuristicVisionIgnoresSearchSuffix(t *testing.T) {
+	got, ok := ResolveModel(nil, "gemini-vision-search")
+	if !ok || got != "deepseek-v4-vision" {
+		t.Fatalf("expected heuristic vision alias to resolve without search variant, got ok=%v model=%q", ok, got)
 	}
 }
 

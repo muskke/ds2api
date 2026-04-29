@@ -6,12 +6,12 @@ import (
 	"ds2api/internal/toolcall"
 )
 
-func DetectAssistantToolCalls(text, exposedThinking, detectionThinking string, toolNames []string) toolcall.ToolCallParseResult {
-	textParsed := toolcall.ParseStandaloneToolCallsDetailed(text, toolNames)
+func DetectAssistantToolCalls(rawText, visibleText, exposedThinking, detectionThinking string, toolNames []string) toolcall.ToolCallParseResult {
+	textParsed := toolcall.ParseStandaloneToolCallsDetailed(rawText, toolNames)
 	if len(textParsed.Calls) > 0 {
 		return textParsed
 	}
-	if strings.TrimSpace(text) != "" {
+	if strings.TrimSpace(visibleText) != "" {
 		return textParsed
 	}
 	thinking := detectionThinking

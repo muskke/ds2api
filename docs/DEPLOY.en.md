@@ -130,6 +130,8 @@ docker-compose logs -f
 ```
 
 The default `docker-compose.yml` directly uses `ghcr.io/cjackhwang/ds2api:latest` and maps host port `6011` to container port `5001`. If you want `5001` exposed directly, set `DS2API_HOST_PORT=5001` (or adjust the `ports` mapping).
+The compose template also defaults to `DS2API_CONFIG_PATH=/data/config.json` with `./config.json:/data/config.json` mounted, so deployments avoid read-only `/app` persistence issues by default.
+Compatibility note: when `DS2API_CONFIG_PATH` is unset and runtime base dir is `/app`, newer versions prefer `/data/config.json`; if that file is missing but legacy `/app/config.json` exists, DS2API automatically falls back to the legacy path to avoid post-upgrade config loss.
 
 If you want a pinned version instead of `latest`, you can also pull a specific tag directly:
 
@@ -195,6 +197,11 @@ Notes:
 
 - **Port**: DS2API listens on `5001` by default; the template sets `PORT=5001`.
 - **Persistent config**: the template mounts `/data` and sets `DS2API_CONFIG_PATH=/data/config.json`. After importing config in Admin UI, it will be written and persisted to this path.
+- **`open /app/config.json: permission denied`**: this means the instance is trying to persist runtime tokens to a read-only path (commonly `/app` inside the image).  
+  Recommended handling:
+  1. Set a writable path explicitly: `DS2API_CONFIG_PATH=/data/config.json` (and mount a persistent volume at `/data`);
+  2. If you bootstrap with `DS2API_CONFIG_JSON` and do not need runtime writeback, keep env-backed mode (`DS2API_ENV_WRITEBACK` disabled);
+  3. In current versions, login/session tests continue even if persistence fails; Admin API returns a warning that token persistence failed and token is memory-only until restart.
 - **Build version**: Zeabur / regular `docker build` does not require `BUILD_VERSION` by default. The image prefers that build arg when provided, and automatically falls back to the repo-root `VERSION` file when it is absent.
 - **First login**: after deployment, open `/admin` and login with `DS2API_ADMIN_KEY` shown in Zeabur env/template instructions (recommended: rotate to a strong secret after first login).
 

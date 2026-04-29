@@ -10,6 +10,8 @@ import (
 	"sync"
 	"time"
 
+	"ds2api/internal/util"
+
 	"github.com/google/uuid"
 )
 
@@ -194,7 +196,8 @@ func (c *captureBody) append(chunk string) {
 	}
 	remain := maxLen - current
 	if len(chunk) > remain {
-		c.buf.WriteString(chunk[:remain])
+		truncated, _ := util.TruncateUTF8Bytes(chunk, remain)
+		c.buf.WriteString(truncated)
 		c.truncated = true
 		return
 	}

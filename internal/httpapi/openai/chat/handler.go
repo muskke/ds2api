@@ -148,6 +148,6 @@ func formatFinalStreamToolCallsWithStableIDs(calls []toolcall.ParsedToolCall, id
 	return shared.FormatFinalStreamToolCallsWithStableIDs(calls, ids, toolsRaw)
 }
 
-func detectAssistantToolCalls(text, exposedThinking, detectionThinking string, toolNames []string) toolcall.ToolCallParseResult {
-	return shared.DetectAssistantToolCalls(text, exposedThinking, detectionThinking, toolNames)
+func detectAssistantToolCalls(rawText, visibleText, exposedThinking, detectionThinking string, toolNames []string) toolcall.ToolCallParseResult {
+	return shared.DetectAssistantToolCalls(rawText, visibleText, exposedThinking, detectionThinking, toolNames)
 }

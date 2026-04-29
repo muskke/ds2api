@@ -28,6 +28,8 @@ FROM debian:bookworm-slim AS runtime-base
 WORKDIR /app
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates \
+    && groupadd -r ds2api && useradd -r -g ds2api -d /app -s /sbin/nologin ds2api \
+    && mkdir -p /app/data && chown -R ds2api:ds2api /app \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=busybox-tools /bin/busybox /usr/local/bin/busybox
 EXPOSE 5001
@@ -36,8 +38,9 @@ CMD ["/usr/local/bin/ds2api"]
 FROM runtime-base AS runtime-from-source
 COPY --from=go-builder /out/ds2api /usr/local/bin/ds2api
 
-COPY --from=go-builder /app/config.example.json /app/config.example.json
-COPY --from=webui-builder /app/static/admin /app/static/admin
+COPY --from=go-builder --chown=ds2api:ds2api /app/config.example.json /app/config.example.json
+COPY --from=webui-builder --chown=ds2api:ds2api /app/static/admin /app/static/admin
+USER ds2api
 
 FROM busybox-tools AS dist-extract
 ARG TARGETARCH
@@ -60,7 +63,8 @@ RUN set -eux; \
 FROM runtime-base AS runtime-from-dist
 COPY --from=dist-extract /out/ds2api /usr/local/bin/ds2api
 
-COPY --from=dist-extract /out/config.example.json /app/config.example.json
-COPY --from=dist-extract /out/static/admin /app/static/admin
+COPY --from=dist-extract --chown=ds2api:ds2api /out/config.example.json /app/config.example.json
+COPY --from=dist-extract --chown=ds2api:ds2api /out/static/admin /app/static/admin
+USER ds2api
 
 FROM runtime-from-source AS final

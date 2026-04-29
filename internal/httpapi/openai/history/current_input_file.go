@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	currentInputFilename    = "IGNORE.txt"
+	currentInputFilename    = promptcompat.CurrentInputContextFilename
 	currentInputContentType = "text/plain; charset=utf-8"
 	currentInputPurpose     = "assistants"
 )
@@ -58,6 +58,7 @@ func (s Service) ApplyCurrentInputFile(ctx context.Context, a *auth.RequestAuth,
 	}
 
 	stdReq.Messages = messages
+	stdReq.HistoryText = fileText
 	stdReq.CurrentInputFileApplied = true
 	stdReq.RefFileIDs = prependUniqueRefFileID(stdReq.RefFileIDs, fileID)
 	stdReq.FinalPrompt, stdReq.ToolNames = promptcompat.BuildOpenAIPrompt(messages, stdReq.ToolsRaw, "", stdReq.ToolChoice, stdReq.Thinking)

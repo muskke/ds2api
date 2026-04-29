@@ -44,13 +44,20 @@ func consumeXMLToolCapture(captured string, toolNames []string) (prefix string, 
 		xmlBlock := captured[tag.Start : closeTag.End+1]
 		prefixPart := captured[:tag.Start]
 		suffixPart := captured[closeTag.End+1:]
-		parsed := toolcall.ParseToolCalls(xmlBlock, toolNames)
-		if len(parsed) > 0 {
+		parsed := toolcall.ParseStandaloneToolCallsDetailed(xmlBlock, toolNames)
+		if len(parsed.Calls) > 0 {
 			prefixPart, suffixPart = trimWrappingJSONFence(prefixPart, suffixPart)
 			if best == nil || tag.Start < best.start {
-				best = &candidate{start: tag.Start, prefix: prefixPart, calls: parsed, suffix: suffixPart}
+				best = &candidate{start: tag.Start, prefix: prefixPart, calls: parsed.Calls, suffix: suffixPart}
 			}
 			break
+		}
+		if parsed.SawToolCallSyntax {
+			if rejected == nil || tag.Start < rejected.start {
+				rejected = &rejectedBlock{start: tag.Start, prefix: prefixPart, suffix: suffixPart}
+			}
+			searchFrom = tag.End + 1
+			continue
 		}
 		if rejected == nil || tag.Start < rejected.start {
 			rejected = &rejectedBlock{start: tag.Start, prefix: prefixPart + xmlBlock, suffix: suffixPart}
@@ -75,10 +82,13 @@ func consumeXMLToolCapture(captured string, toolNames []string) (prefix string, 
 				xmlBlock := "<tool_calls>" + captured[invokeTag.Start:closeTag.End+1]
 				prefixPart := captured[:invokeTag.Start]
 				suffixPart := captured[closeTag.End+1:]
-				parsed := toolcall.ParseToolCalls(xmlBlock, toolNames)
-				if len(parsed) > 0 {
+				parsed := toolcall.ParseStandaloneToolCallsDetailed(xmlBlock, toolNames)
+				if len(parsed.Calls) > 0 {
 					prefixPart, suffixPart = trimWrappingJSONFence(prefixPart, suffixPart)
-					return prefixPart, parsed, suffixPart, true
+					return prefixPart, parsed.Calls, suffixPart, true
+				}
+				if parsed.SawToolCallSyntax {
+					return prefixPart, nil, suffixPart, true
 				}
 				return prefixPart + captured[invokeTag.Start:closeTag.End+1], nil, suffixPart, true
 			}
