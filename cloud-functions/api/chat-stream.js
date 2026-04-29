@@ -766,7 +766,7 @@ async function processSingleStream({
         try {
           chunk = JSON.parse(dataStr);
         } catch (_) { continue; }
-        observeContinueState(createContinueState, chunk); // TODO: Fix
+        observeContinueState(continueState, chunk);
         const parsed = parseChunkForContent(chunk, thinkingEnabled, currentType, stripReferenceMarkers);
         if (!parsed.parsed) continue;
         currentType = parsed.newType;
@@ -834,29 +834,41 @@ async function processSingleStream({
   let continueState = createContinueState(sessionID);
   let continueRounds = 0;
 
-  while (true) {
+  const heartbeatTimer = setInterval(() => {
     if (clientClosed()) {
-      await finish('stop');
-      return { terminal: true, retryable: false };
+      clearInterval(heartbeatTimer);
+      return;
     }
-    const result = await handleResponse(currentResponse);
-    if (result.terminal) {
-      return result;
-    }
-    if (shouldAutoContinue(continueState) && continueRounds < AUTO_CONTINUE_MAX_ROUNDS) {
-      continueRounds += 1;
-      const nextRes = await fetchContinue(continueState.responseMessageID);
-      if (nextRes === null) {
+    writer.write(encoder.encode(': heartbeat\n\n')).catch(() => {});
+  }, 15000);
+
+  try {
+    while (true) {
+      if (clientClosed()) {
+        await finish('stop');
         return { terminal: true, retryable: false };
       }
-      if (!nextRes.ok || !nextRes.body) {
-        return { terminal: await finish('stop'), retryable: false };
+      const result = await handleResponse(currentResponse);
+      if (result.terminal) {
+        return result;
       }
-      continueState = prepareContinueStateForNextRound(continueState);
-      currentResponse = nextRes;
-      continue;
+      if (shouldAutoContinue(continueState) && continueRounds < AUTO_CONTINUE_MAX_ROUNDS) {
+        continueRounds += 1;
+        const nextRes = await fetchContinue(continueState.responseMessageID);
+        if (nextRes === null) {
+          return { terminal: true, retryable: false };
+        }
+        if (!nextRes.ok || !nextRes.body) {
+          return { terminal: await finish('stop'), retryable: false };
+        }
+        continueState = prepareContinueStateForNextRound(continueState);
+        currentResponse = nextRes;
+        continue;
+      }
+      break;
     }
-    break;
+  } finally {
+    clearInterval(heartbeatTimer);
   }
 
   const terminal = await finish('stop', { deferEmpty: allowDeferEmpty });
