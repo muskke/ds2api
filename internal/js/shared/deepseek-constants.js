@@ -1,7 +1,11 @@
 'use strict';
 
-const fs = require('fs');
-const path = require('path');
+const fs = (function() {
+  try { return require('fs'); } catch (_) { return null; }
+})();
+const path = (function() {
+  try { return require('path'); } catch (_) { return null; }
+})();
 
 const DEFAULT_CLIENT = Object.freeze({
   name: 'DeepSeek',
@@ -71,6 +75,7 @@ function buildBaseHeaders(parsed, client) {
 }
 
 function sharedConstantsPaths() {
+  if (!path) return [];
   return [
     path.resolve(__dirname, '../../deepseek/protocol/constants_shared.json'),
     path.resolve(process.cwd(), 'internal/deepseek/protocol/constants_shared.json'),
@@ -83,12 +88,14 @@ function readSharedConstants() {
   } catch (_err) {
     // Fall through to filesystem candidates for test and local execution variants.
   }
-  for (const sharedPath of sharedConstantsPaths()) {
-    try {
-      const raw = fs.readFileSync(sharedPath, 'utf8');
-      return JSON.parse(raw);
-    } catch (_err) {
-      // Try the next candidate path; fall back to in-file structural defaults below.
+  if (fs && path) {
+    for (const sharedPath of sharedConstantsPaths()) {
+      try {
+        const raw = fs.readFileSync(sharedPath, 'utf8');
+        return JSON.parse(raw);
+      } catch (_err) {
+        // Try the next candidate path; fall back to in-file structural defaults below.
+      }
     }
   }
   return {};

@@ -1,6 +1,8 @@
 'use strict';
 
-const crypto = require('crypto');
+const crypto = (function() {
+  try { return require('crypto'); } catch (_) { return null; }
+})();
 
 const {
   extractToolNames,
@@ -119,8 +121,14 @@ function ensureStreamToolCallID(idStore, index) {
 }
 
 function newCallID() {
-  if (typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID().replace(/-/g, '');
+  // EdgeOne and modern Node.js support crypto.randomUUID
+  try {
+    const c = crypto || (typeof globalThis !== 'undefined' ? globalThis.crypto : null);
+    if (c && typeof c.randomUUID === 'function') {
+      return c.randomUUID().replace(/-/g, '');
+    }
+  } catch (_err) {
+    // Fallback for environments where crypto might be restricted or partially implemented
   }
   return `${Date.now()}${Math.floor(Math.random() * 1e9)}`;
 }

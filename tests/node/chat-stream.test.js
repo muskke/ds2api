@@ -29,6 +29,8 @@ const {
   isNodeStreamSupportedPath,
   extractPathname,
   trimContinuationOverlap,
+  isEdgeOneRuntime,
+  isServerlessRuntime,
 } = handler.__test;
 
 function createMockResponse() {
@@ -721,4 +723,45 @@ test('trimContinuationOverlap preserves short normal tokens and trims long snaps
   const existing = '我们被问到：这是一个很长的续答快照前缀，用来验证去重逻辑不会误伤正常 token。';
   const incoming = `${existing}继续分析`;
   assert.equal(trimContinuationOverlap(existing, incoming), '继续分析');
+});
+
+test('isEdgeOneRuntime detects EDGEONE_RUNTIME env var', () => {
+  const originalEdgeOneRuntime = process.env.EDGEONE_RUNTIME;
+  const originalEdgeOne = process.env.EDGEONE;
+  delete process.env.VERCEL;
+  delete process.env.NOW_REGION;
+  try {
+    process.env.EDGEONE_RUNTIME = '1';
+    process.env.EDGEONE = '';
+    assert.equal(isEdgeOneRuntime(), true);
+    process.env.EDGEONE_RUNTIME = '';
+    process.env.EDGEONE = '1';
+    assert.equal(isEdgeOneRuntime(), true);
+    process.env.EDGEONE_RUNTIME = '';
+    process.env.EDGEONE = '';
+    assert.equal(isEdgeOneRuntime(), false);
+  } finally {
+    process.env.EDGEONE_RUNTIME = originalEdgeOneRuntime;
+    process.env.EDGEONE = originalEdgeOne;
+  }
+});
+
+test('isServerlessRuntime combines Vercel and EdgeOne detection', () => {
+  const originalVercel = process.env.VERCEL;
+  const originalEdgeOneRuntime = process.env.EDGEONE_RUNTIME;
+  delete process.env.NOW_REGION;
+  delete process.env.EDGEONE;
+  try {
+    process.env.VERCEL = '';
+    process.env.EDGEONE_RUNTIME = '';
+    assert.equal(isServerlessRuntime(), false);
+    process.env.VERCEL = '1';
+    assert.equal(isServerlessRuntime(), true);
+    process.env.VERCEL = '';
+    process.env.EDGEONE_RUNTIME = '1';
+    assert.equal(isServerlessRuntime(), true);
+  } finally {
+    process.env.VERCEL = originalVercel;
+    process.env.EDGEONE_RUNTIME = originalEdgeOneRuntime;
+  }
 });

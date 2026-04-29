@@ -2,6 +2,8 @@ module ds2api
 
 go 1.26.0
 
+toolchain go1.26.2
+
 require (
 	github.com/andybalholm/brotli v1.2.1
 	github.com/go-chi/chi/v5 v5.2.5

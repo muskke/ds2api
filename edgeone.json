@@ -1,0 +1,14 @@
+{
+  "buildCommand": "npm run build --prefix webui -- --outDir ../static/admin --emptyOutDir && node ./scripts/edgeone-post-build.js",
+  "installCommand": "npm ci --prefix webui",
+  "rewrites": [
+    {
+      "source": "/v1/chat/completions",
+      "destination": "/functions/api/chat-stream"
+    },
+    {
+      "source": "/*",
+      "destination": "/cloud-functions/api-go"
+    }
+  ]
+}

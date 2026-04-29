@@ -18,6 +18,15 @@ func IsVercel() bool {
 	return strings.TrimSpace(os.Getenv("VERCEL")) != "" || strings.TrimSpace(os.Getenv("NOW_REGION")) != ""
 }
 
+func IsEdgeOne() bool {
+	return strings.TrimSpace(os.Getenv("EDGEONE")) != "" || strings.TrimSpace(os.Getenv("EDGEONE_RUNTIME")) != ""
+}
+
+func IsServerless() bool {
+	// Local development (edgeone pages dev) must write state to disk, so it is NOT serverless.
+	return IsVercel() || IsEdgeOne()
+}
+
 func ResolvePath(envKey, defaultRel string) string {
 	raw := strings.TrimSpace(os.Getenv(envKey))
 	if raw != "" {

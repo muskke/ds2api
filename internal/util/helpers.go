@@ -10,8 +10,19 @@ import (
 // in openai, claude, and admin packages.
 func WriteJSON(w http.ResponseWriter, status int, payload any) {
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(payload)
+	w.WriteHeader(http.StatusOK)
+
+	// 如果 payload 是 map，直接注入 _status
+	if m, ok := payload.(map[string]any); ok {
+		m["status"] = status
+		_ = json.NewEncoder(w).Encode(m)
+	} else {
+		// 如果不是 map（如数组或结构体），则包装一层
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data":   payload,
+			"status": status,
+		})
+	}
 }
 
 // ToBool loosely converts an interface value to bool.

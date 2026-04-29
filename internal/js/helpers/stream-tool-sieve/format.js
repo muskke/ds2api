@@ -1,6 +1,8 @@
 'use strict';
 
-const crypto = require('crypto');
+const crypto = (function() {
+  try { return require('crypto'); } catch (_) { return null; }
+})();
 
 function formatOpenAIStreamToolCalls(calls, idStore) {
   if (!Array.isArray(calls) || calls.length === 0) {
@@ -32,8 +34,13 @@ function ensureStreamToolCallID(idStore, index) {
 }
 
 function newCallID() {
-  if (typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID().replace(/-/g, '');
+  try {
+    const c = crypto || (typeof globalThis !== 'undefined' ? globalThis.crypto : null);
+    if (c && typeof c.randomUUID === 'function') {
+      return c.randomUUID().replace(/-/g, '');
+    }
+  } catch (_err) {
+    // Fallback
   }
   return `${Date.now()}${Math.floor(Math.random() * 1e9)}`;
 }

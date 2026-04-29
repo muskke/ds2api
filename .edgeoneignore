@@ -1,0 +1,22 @@
+# 1. 先忽略所有文件
+/*
+
+# 2. 允许 Go 核心代码和依赖
+!/internal/**
+!/api/**
+!/app/**
+!/cloud-functions/**
+!/go.mod
+!/go.sum
+!/index.go
+
+# 3. 允许必须的静态文件 (用于后台管理)
+!/static/**
+
+# 4. 显式排除那些又大又没用的文件夹
+/webui/**
+/tests/**
+/plans/**
+/.git/**
+/.tmp/**
+/node_modules/**

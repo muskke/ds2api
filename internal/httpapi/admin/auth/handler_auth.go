@@ -22,7 +22,10 @@ func (h *Handler) requireAdmin(next http.Handler) http.Handler {
 
 func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 	var req map[string]any
-	_ = json.NewDecoder(r.Body).Decode(&req)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req == nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"detail": "Invalid request body"})
+		return
+	}
 	adminKey, _ := req["admin_key"].(string)
 	expireHours := intFrom(req["expire_hours"])
 	if !authn.VerifyAdminCredential(adminKey, h.Store) {

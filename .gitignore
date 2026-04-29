@@ -19,6 +19,9 @@ artifacts/
 # Vercel
 .vercel
 
+# EdgeOne
+.edgeone
+
 # Node.js / Frontend
 node_modules/
 webui/node_modules/
@@ -67,3 +70,4 @@ CLAUDE.local.md
 data/
 .codex
 .roomodes
+nul

@@ -15,11 +15,12 @@
 - [一、下载 Release 构建包](#一下载-release-构建包)
 - [二、Docker / GHCR 部署](#二docker--ghcr-部署)
 - [三、Vercel 部署](#三vercel-部署)
-- [四、本地源码运行](#四本地源码运行)
-- [五、反向代理（Nginx）](#五反向代理nginx)
-- [六、Linux systemd 服务化](#六linux-systemd-服务化)
-- [七、部署后检查](#七部署后检查)
-- [八、发布前进行本地回归](#八发布前进行本地回归)
+- [四、EdgeOne Pages 部署](#四edgeone-pages-部署)
+- [五、本地源码运行](#五本地源码运行)
+- [六、反向代理（Nginx）](#六反向代理nginx)
+- [七、Linux systemd 服务化](#七linux-systemd-服务化)
+- [八、部署后检查](#八部署后检查)
+- [九、发布前进行本地回归](#九发布前进行本地回归)
 
 ---
 
@@ -28,9 +29,10 @@
 推荐按以下顺序选择部署方式：
 
 1. **下载 Release 构建包运行**：最省事，产物已编译完成，最适合大多数用户。
-2. **Docker / GHCR 镜像部署**：适合需要容器化、编排或云环境部署。
-3. **Vercel 部署**：适合已有 Vercel 环境且接受其平台约束的场景。
-4. **本地源码运行 / 自行编译**：适合开发、调试或需要自行修改代码的场景。
+2. **EdgeOne Pages 部署**：适合面向中国大陆用户的场景，利用腾讯云全球边缘节点加速，原生支持 Go（Chi 框架）与 Node.js 全栈部署。
+3. **Docker / GHCR 镜像部署**：适合需要容器化、编排或云环境部署。
+4. **Vercel 部署**：适合已有 Vercel 环境且接受其平台约束的场景。
+5. **本地源码运行 / 自行编译**：适合开发、调试或需要自行修改代码的场景。
 
 ---
 
@@ -369,9 +371,122 @@ No Output Directory named "public" found after the Build completed.
 
 ---
 
-## 四、本地源码运行
+## 四、EdgeOne Pages 部署
 
-### 4.1 基本步骤
+EdgeOne Pages 是腾讯云推出的全栈开发与部署平台，基于全球边缘节点加速，对国内用户访问体验优于 Vercel。项目已内置 `edgeone.json` 配置文件，可一键部署。
+
+### 4.1 前置要求
+
+- 腾讯云账号（注册并开通 EdgeOne Pages 服务）
+- GitHub 仓库（项目已 Fork 到你的账号）
+- 环境变量准备（见下方）
+
+### 4.2 部署步骤
+
+1. 登录 [腾讯云控制台](https://console.cloud.tencent.com/edgeone/pages)，进入 Pages 服务。
+2. 点击「创建项目」，选择「从 GitHub 导入」。
+3. 授权并选择你的 DS2API 仓库。
+4. 在项目配置页面，构建命令和输出目录会自动从 `edgeone.json` 读取：
+   - 构建命令：`npm ci --prefix webui && npm run build --prefix webui -- --outDir ../static/admin --emptyOutDir`
+   - 输出目录：`static`
+   - Node.js 版本：`22.17.1`
+5. 配置环境变量（最少只需设置以下两项）：
+   - `DS2API_ADMIN_KEY`：管理密钥（必填，建议使用强密码）
+   - `DS2API_CONFIG_JSON`：完整的配置内容（Base64 编码，包含账号、API Key 等业务配置）
+6. 点击「开始部署」，Pages 将自动构建和部署项目。
+
+### 4.3 推荐填写方式（避免 `DS2API_CONFIG_JSON` 填错）
+
+先在仓库目录准备好配置文件，再生成 Base64：
+
+```bash
+cp config.example.json config.json
+# 编辑 config.json，填入账号和 API Key
+
+# 生成 Base64（在仓库根目录执行）
+DS2API_CONFIG_JSON="$(base64 < config.json | tr -d '\n')"
+echo "$DS2API_CONFIG_JSON"
+```
+
+将输出的整行 Base64 粘贴到 EdgeOne Pages 控制台的环境变量 `DS2API_CONFIG_JSON` 中。
+
+### 4.4 架构说明
+
+```text
+请求 ─────┐
+          │
+          ▼
+     edgeone.json 路由规则
+          │
+    ┌─────┴─────┐
+    │           │
+    ▼           ▼
+cloud-functions/index.go  functions/api/chat-stream.js
+(Go Cloud Function)       (Node Function)
+    │           │
+    │           ├─ Prepare / Release → Go Cloud Function
+    │           └─ Stream → DeepSeek API
+    ▼
+Go 后端 (internal/server)
+    │
+    ▼
+DeepSeek API
+```
+
+- **入口文件**：
+  - `cloud-functions/index.go`：Go Cloud Function（Framework 模式，使用 Chi 框架），处理所有非流式 REST API 和管理接口
+  - `functions/api/chat-stream.js`：Node Function，处理流式 `/v1/chat/completions` 请求
+- **流式处理链路**：
+  1. Node Function 收到 `/v1/chat/completions` 请求
+  2. 调用 Go Cloud Function 内部 prepare 接口（`?__stream_prepare=1`），获取会话 ID、PoW、token 等
+  3. Go prepare 创建 stream lease，锁定账号
+  4. Node 直连 DeepSeek 上游，实时流式转发 SSE 给客户端（含 OpenAI chunk 封装与 tools 防泄漏筛分）
+  5. 流结束后 Node 调用 Go release 接口（`?__stream_release=1`），释放账号
+- **非流式请求**：非流式请求直接由 Go Cloud Function 处理，与本地/Docker 部署行为一致
+- **构建流程**：前端（`npm build`）→ 输出到 `static/`；Go 入口（`cloud-functions/`）→ 平台自动交叉编译
+
+### 4.5 可选环境变量
+
+| 变量 | 说明 | 默认值 |
+| --- | --- | --- |
+| `DS2API_ADMIN_KEY` | 管理密钥（必填） | — |
+| `DS2API_CONFIG_JSON` | 完整配置（Base64，建议） | — |
+| `DS2API_ACCOUNT_MAX_INFLIGHT` | 每账号并发上限 | `2` |
+| `DS2API_GLOBAL_MAX_INFLIGHT` | 全局并发上限 | 自动计算 |
+| `DS2API_ENV_WRITEBACK` | 检测到 `DS2API_CONFIG_JSON` 时自动写入 `DS2API_CONFIG_PATH` | 关闭 |
+| `VERCEL_TOKEN` | Vercel 同步 token（如仍需 WebUI Vercel 同步功能） | — |
+| `VERCEL_PROJECT_ID` | Vercel 项目 ID | — |
+| `VERCEL_TEAM_ID` | Vercel 团队 ID | — |
+
+### 4.6 域名配置
+
+1. 在项目设置中添加自定义域名，获取 CNAME 记录值。
+2. 登录 DNS 服务商控制台，添加 CNAME 记录指向 EdgeOne Pages 提供的值。
+3. 等待 DNS 更新生效。
+
+### 4.7 函数限制
+
+| 项目 | 限制 |
+| --- | --- |
+| Go 函数单次运行时长 | 120s |
+| Node 函数单次运行时长 | 30s |
+| 代码包大小 | 128 MB |
+| 请求 body 大小 | 6 MB |
+
+### 4.8 常见排查
+
+**Go 构建失败**：确保 `go.mod` 中 Go 版本与 EdgeOne 运行时一致（当前为 1.26），框架依赖完整。
+
+**流式响应异常**：检查 `DS2API_ADMIN_KEY` 是否正确设置，Node Function 依赖该密钥进行内部鉴权。
+
+**前端页面 404**：确保构建命令中 `--outDir ../static/admin` 输出到了正确路径。
+
+---
+
+## 五、本地源码运行
+
+
+### 5.1 基本步骤
 
 ```bash
 # 克隆仓库
@@ -428,7 +543,7 @@ go build -o ds2api ./cmd/ds2api
 
 ---
 
-## 五、反向代理（Nginx）
+## 六、反向代理（Nginx）
 
 如果在 Nginx 后部署，**必须关闭缓冲**以保证 SSE 流式响应正常工作：
 
@@ -472,7 +587,7 @@ server {
 
 ---
 
-## 六、Linux systemd 服务化
+## 七、Linux systemd 服务化
 
 ### 6.1 安装
 
@@ -533,7 +648,7 @@ sudo systemctl stop ds2api
 
 ---
 
-## 七、部署后检查
+## 八、部署后检查
 
 无论使用哪种部署方式，启动后建议依次检查：
 
@@ -563,7 +678,7 @@ curl http://127.0.0.1:5001/v1/chat/completions \
 
 ---
 
-## 八、发布前进行本地回归
+## 九、发布前进行本地回归
 
 建议在发布前执行完整的端到端测试集（使用真实账号）：
 

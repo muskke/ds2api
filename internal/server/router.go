@@ -108,7 +108,19 @@ func NewApp() (*App, error) {
 		if strings.HasPrefix(req.URL.Path, "/admin/") && webuiHandler.HandleAdminFallback(w, req) {
 			return
 		}
-		http.NotFound(w, req)
+		// Debug info for EdgeOne routing issues - use 200 to avoid EdgeOne 404 interception
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		headers := make(map[string]string)
+		for k, v := range req.Header {
+			headers[k] = strings.Join(v, ", ")
+		}
+		json.NewEncoder(w).Encode(map[string]any{
+			"error":   "not_found",
+			"path":    req.URL.Path,
+			"method":  req.Method,
+			"headers": headers,
+		})
 	})
 
 	return &App{Store: store, Pool: pool, Resolver: resolver, DS: dsClient, Router: r}, nil

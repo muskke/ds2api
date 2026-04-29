@@ -86,6 +86,14 @@ function isVercelRuntime() {
   return asString(process.env.VERCEL) !== '' || asString(process.env.NOW_REGION) !== '';
 }
 
+function isEdgeOneRuntime() {
+  return asString(process.env.EDGEONE_RUNTIME) !== '' || asString(process.env.EDGEONE) !== '';
+}
+
+function isServerlessRuntime() {
+  return isVercelRuntime() || isEdgeOneRuntime();
+}
+
 function isNodeStreamSupportedPath(rawURL) {
   const path = extractPathname(rawURL);
   return path === '/v1/chat/completions';
@@ -125,4 +133,6 @@ module.exports.__test = {
   isNodeStreamSupportedPath,
   extractPathname,
   trimContinuationOverlap,
+  isEdgeOneRuntime,
+  isServerlessRuntime,
 };
