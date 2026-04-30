@@ -1,14 +1,28 @@
 {
-  "buildCommand": "npm run build --prefix webui -- --outDir ../static/admin --emptyOutDir && node ./scripts/edgeone-post-build.js",
+  "buildCommand": "npm run build --prefix webui -- --outDir ../static/admin --emptyOutDir",
   "installCommand": "npm ci --prefix webui",
   "rewrites": [
     {
       "source": "/v1/chat/completions",
-      "destination": "/cloud-functions/api/chat-stream"
+      "has": [
+        {
+          "type": "query",
+          "key": "__go"
+        }
+      ],
+      "destination": "/cloud-functions/index"
     },
     {
-      "source": "/*",
-      "destination": "/cloud-functions/api-go"
+      "source": "/v1/chat/completions",
+      "destination": "/cloud-functions/api/chat-stream"
     }
-  ]
+  ],
+  "cloudFunctions": {
+    "nodejs": {
+      "maxDuration": 120
+    },
+    "go": {
+      "maxDuration": 120
+    }
+  }
 }
